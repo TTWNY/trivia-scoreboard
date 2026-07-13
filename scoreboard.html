@@ -2,29 +2,36 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Trivia Scoreboard</title>
+<title>Taproom Trivia WNY — Scoreboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Dancing+Script:wght@600;700&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root{
-    --ink:#0B0E14;
-    --panel:#12161F;
-    --panel-2:#181D29;
-    --gold:#F2B705;
-    --gold-dim:#8A6A08;
+    --ink:#0A0D14;
+    --panel:#12151F;
+    --panel-2:#181C29;
+    --teal:#2FC1B8;
+    --teal-dim:#155C57;
+    --coral:#FF6F52;
+    --magenta:#E0507B;
+    --indigo:#4B3184;
     --up:#3ED598;
     --down:#FF5C5C;
-    --line:#262C3A;
-    --text:#EDEFF4;
-    --text-dim:#7C8394;
+    --line:#262B3A;
+    --text:#F2F1EE;
+    --text-dim:#8890A0;
   }
   *{box-sizing:border-box;}
   html,body{
     margin:0;padding:0;height:100%;
     background:
-      radial-gradient(1200px 600px at 15% -10%, #1a2136 0%, transparent 60%),
-      radial-gradient(1000px 500px at 110% 10%, #241a10 0%, transparent 55%),
+      radial-gradient(1100px 550px at 12% -8%, rgba(47,193,184,0.16) 0%, transparent 60%),
+      radial-gradient(1000px 520px at 108% 6%, rgba(255,111,82,0.14) 0%, transparent 55%),
+      radial-gradient(900px 500px at 50% 115%, rgba(75,49,132,0.20) 0%, transparent 60%),
       var(--ink);
     color:var(--text);
-    font-family:'Arial Narrow', Arial, sans-serif;
+    font-family:'Inter', Arial, sans-serif;
     overflow:hidden;
   }
   .stage{
@@ -35,22 +42,30 @@
   }
   .masthead{
     display:flex;
-    align-items:baseline;
+    align-items:center;
     justify-content:space-between;
     margin-bottom:1.6vh;
     flex-shrink:0;
   }
-  .title{
-    font-family:'Georgia', 'Times New Roman', serif;
-    font-weight:700;
-    font-style:italic;
-    font-size:clamp(28px, 4.4vh, 64px);
-    letter-spacing:0.5px;
-    color:var(--text);
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:1vw;
   }
-  .title em{
-    color:var(--gold);
-    font-style:italic;
+  .brand img{
+    height:clamp(64px, 11vh, 130px);
+    width:auto;
+    filter: drop-shadow(0 4px 18px rgba(47,193,184,0.25));
+  }
+  .wny-tag{
+    font-family:'Inter', sans-serif;
+    font-weight:800;
+    font-size:clamp(12px, 1.7vh, 18px);
+    color:var(--coral);
+    letter-spacing:4px;
+    text-transform:uppercase;
+    align-self:flex-end;
+    margin-bottom:1.2vh;
   }
   .clockrow{
     display:flex;
@@ -63,8 +78,8 @@
   }
   .dot{
     width:9px;height:9px;border-radius:50%;
-    background:var(--up);
-    box-shadow:0 0 10px var(--up);
+    background:var(--teal);
+    box-shadow:0 0 10px var(--teal);
     animation:pulse 1.6s ease-in-out infinite;
   }
   @keyframes pulse{
@@ -94,23 +109,23 @@
     transition: transform 500ms ease, box-shadow 500ms ease;
   }
   .row.rank-1{
-    border-color: var(--gold-dim);
-    box-shadow: 0 0 0 1px rgba(242,183,5,0.25), 0 10px 30px -10px rgba(242,183,5,0.25);
+    border-color: var(--teal-dim);
+    box-shadow: 0 0 0 1px rgba(47,193,184,0.28), 0 10px 30px -10px rgba(47,193,184,0.30);
   }
   .row.rank-1::before{
     content:"";
     position:absolute; left:0; top:0; bottom:0; width:5px;
-    background:var(--gold);
+    background:linear-gradient(180deg, var(--teal), var(--coral));
     border-radius:14px 0 0 14px;
   }
   .rank{
-    font-family:'Georgia', serif;
-    font-weight:700;
+    font-family:'Playfair Display', serif;
+    font-weight:900;
     font-size:clamp(20px, 3vh, 34px);
     color:var(--text-dim);
     text-align:center;
   }
-  .rank-1 .rank{ color:var(--gold); }
+  .rank-1 .rank{ color:var(--teal); }
 
   .teamblock{
     display:flex;
@@ -154,10 +169,10 @@
   .delta.down{ color:var(--down); background:rgba(255,92,92,0.12); }
 
   .score{
-    font-family:'Georgia', serif;
-    font-weight:700;
+    font-family:'Playfair Display', serif;
+    font-weight:900;
     font-size:clamp(28px, 5.2vh, 58px);
-    color:var(--gold);
+    color:var(--teal);
     min-width:2ch;
     text-align:right;
     font-variant-numeric: tabular-nums;
@@ -168,7 +183,7 @@
   }
   @keyframes bump{
     0%{ transform:scale(1); }
-    30%{ transform:scale(1.18); text-shadow:0 0 24px rgba(242,183,5,0.9); }
+    30%{ transform:scale(1.18); text-shadow:0 0 24px rgba(47,193,184,0.85); }
     100%{ transform:scale(1); }
   }
 
@@ -205,7 +220,9 @@
 <body>
 <div class="stage">
   <div class="masthead">
-    <div class="title">Trivia <em>Live</em> Scoreboard</div>
+    <div class="brand">
+      <img src="Taproom_Trivia_Logo.png" alt="Taproom Trivia logo">
+    </div>
     <div class="clockrow"><span class="dot"></span><span id="statusText">Connecting…</span></div>
   </div>
 
@@ -230,7 +247,7 @@
 // Google Sheet -> File -> Share -> Publish to web -> select the
 // "Scores" tab -> format: Comma-separated values (.csv) -> Publish
 // Then paste that URL below.
-const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6bfjeD-PKKp_jYr_8EezDrdG0VnJ2CXa-AyV8a93jHNTqgLedb7511KKAuMm5FhU9KE-0SQMbChxg/pub?gid=0&single=true&output=csv";
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6bfjeD-PKKp_jYr_8EezDrdG0VnJ2CXa-AyV8a93jHNTqgLedb7511KKAuMm5FhU9KE-0SQMbChxg/pubhtml?gid=0&single=true";
 
 // How often to re-fetch scores, in milliseconds.
 const REFRESH_MS = 5000;
@@ -243,6 +260,7 @@ const REFRESH_MS = 5000;
 
 const ROUND_KEYS = ["Round 1","Round 2","Round 3","Round 4","Round 5"];
 let previousScores = {}; // team name -> last known Final score
+let lastGoodTeamCount = 0; // used to ignore transient partial CSV reads
 
 function parseCSV(text){
   // Minimal CSV parser that handles quoted fields with commas.
@@ -385,7 +403,19 @@ async function fetchScores(){
     const text = await res.text();
     const rows = parseCSV(text);
     const teams = rowsToTeams(rows);
+
+    // Google's published CSV occasionally serves a partial/stale snapshot
+    // mid-refresh. If this fetch has noticeably fewer teams than the last
+    // good fetch, treat it as a glitch and keep showing what we have
+    // instead of flashing an incomplete board.
+    if(lastGoodTeamCount > 0 && teams.length > 0 && teams.length < lastGoodTeamCount){
+      statusText.textContent = "Live";
+      lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString() + " (skipped partial read)";
+      return;
+    }
+
     render(teams);
+    lastGoodTeamCount = teams.length;
     errorBanner.style.display = "none";
     statusText.textContent = "Live";
     lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString();

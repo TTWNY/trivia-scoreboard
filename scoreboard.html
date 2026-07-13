@@ -265,7 +265,8 @@ const REFRESH_MS = 5000;
 
 const ROUND_KEYS = ["Round 1","Round 2","Round 3","Round 4","Round 5"];
 let previousScores = {}; // team name -> last known Final score
-let lastGoodTeamCount = 0; // used to ignore transient partial CSV reads
+let lastGoodTeamCount = 0; // used to ignore transient partial reads
+let consecutiveLowReads = 0;
 
 function tableToTeams(table){
   const headers = table.cols.map(c => (c.label || "").trim());
@@ -412,11 +413,13 @@ function fetchScores(){
       // Google occasionally serves a partial/stale snapshot mid-refresh.
       // If this read has noticeably fewer teams than the last good read,
       // treat it as a glitch and keep showing what we have.
-      if(lastGoodTeamCount > 0 && teams.length > 0 && teams.length < lastGoodTeamCount){
+      if(lastGoodTeamCount > 0 && teams.length < lastGoodTeamCount && consecutiveLowReads < 2){
+        consecutiveLowReads++;
         statusText.textContent = "Live";
         lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString() + " (skipped partial read)";
         return;
       }
+      consecutiveLowReads = 0;
 
       render(teams);
       lastGoodTeamCount = teams.length;

@@ -21,6 +21,16 @@
     --line:#262B3A;
     --text:#F2F1EE;
     --text-dim:#8890A0;
+
+    --gold-1:#FCEBA6;
+    --gold-2:#E3B23C;
+    --gold-3:#8A6210;
+    --silver-1:#F2F5F9;
+    --silver-2:#B9C2CE;
+    --silver-3:#5E6773;
+    --bronze-1:#F0C89A;
+    --bronze-2:#C97A3D;
+    --bronze-3:#6E3D18;
   }
   *{box-sizing:border-box;}
   html,body{
@@ -106,7 +116,8 @@
     border-radius:14px;
     padding:1.1vh 2vw;
     position:relative;
-    transition: transform 500ms ease, box-shadow 500ms ease;
+    overflow:hidden;
+    transition: transform 500ms ease, box-shadow 500ms ease, border-color 500ms ease;
   }
   .row.rank-1{
     border-color: var(--teal-dim);
@@ -118,6 +129,51 @@
     background:linear-gradient(180deg, var(--teal), var(--coral));
     border-radius:14px 0 0 14px;
   }
+
+  /* Medal states — active once the game is final (bonus results in) */
+  .row.medal-gold, .row.medal-silver, .row.medal-bronze{
+    border-color: transparent;
+  }
+  .row.medal-gold::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:6px;
+    background:linear-gradient(180deg, var(--gold-1), var(--gold-2) 55%, var(--gold-3));
+    border-radius:14px 0 0 14px;
+  }
+  .row.medal-silver::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:6px;
+    background:linear-gradient(180deg, var(--silver-1), var(--silver-2) 55%, var(--silver-3));
+    border-radius:14px 0 0 14px;
+  }
+  .row.medal-bronze::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:6px;
+    background:linear-gradient(180deg, var(--bronze-1), var(--bronze-2) 55%, var(--bronze-3));
+    border-radius:14px 0 0 14px;
+  }
+  .row.medal-gold{
+    box-shadow: 0 0 0 1px rgba(227,178,60,0.45), 0 12px 34px -10px rgba(227,178,60,0.35);
+  }
+  .row.medal-silver{
+    box-shadow: 0 0 0 1px rgba(185,194,206,0.4), 0 12px 34px -10px rgba(185,194,206,0.3);
+  }
+  .row.medal-bronze{
+    box-shadow: 0 0 0 1px rgba(201,122,61,0.4), 0 12px 34px -10px rgba(201,122,61,0.3);
+  }
+  /* soft diagonal sheen sweeping across medal rows */
+  .row.medal-gold::after, .row.medal-silver::after, .row.medal-bronze::after{
+    content:"";
+    position:absolute; top:0; left:-60%; width:40%; height:100%;
+    background:linear-gradient(115deg, transparent, rgba(255,255,255,0.16), transparent);
+    animation: sheen 5s ease-in-out infinite;
+    pointer-events:none;
+  }
+  .row.medal-silver::after{ animation-delay:0.6s; }
+  .row.medal-bronze::after{ animation-delay:1.2s; }
+  @keyframes sheen{
+    0%{ left:-60%; }
+    35%{ left:130%; }
+    100%{ left:130%; }
+  }
+
   .rank{
     font-family:'Playfair Display', serif;
     font-weight:900;
@@ -126,6 +182,35 @@
     text-align:center;
   }
   .rank-1 .rank{ color:var(--teal); }
+
+  .medal-badge{
+    width:clamp(30px, 4.6vh, 52px);
+    height:clamp(30px, 4.6vh, 52px);
+    border-radius:50%;
+    margin:0 auto;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:'Playfair Display', serif;
+    font-weight:900;
+    font-size:clamp(14px, 2.1vh, 24px);
+    color:#241505;
+    position:relative;
+  }
+  .medal-gold .medal-badge{
+    background:radial-gradient(circle at 32% 28%, var(--gold-1), var(--gold-2) 60%, var(--gold-3));
+    box-shadow: inset 0 1px 2px rgba(255,255,255,0.7), inset 0 -3px 6px rgba(0,0,0,0.35), 0 3px 10px rgba(227,178,60,0.5);
+  }
+  .medal-silver .medal-badge{
+    background:radial-gradient(circle at 32% 28%, var(--silver-1), var(--silver-2) 60%, var(--silver-3));
+    box-shadow: inset 0 1px 2px rgba(255,255,255,0.8), inset 0 -3px 6px rgba(0,0,0,0.3), 0 3px 10px rgba(185,194,206,0.45);
+    color:#20242B;
+  }
+  .medal-bronze .medal-badge{
+    background:radial-gradient(circle at 32% 28%, var(--bronze-1), var(--bronze-2) 60%, var(--bronze-3));
+    box-shadow: inset 0 1px 2px rgba(255,230,210,0.6), inset 0 -3px 6px rgba(0,0,0,0.35), 0 3px 10px rgba(201,122,61,0.45);
+    color:#2A1508;
+  }
 
   .teamblock{
     display:flex;
@@ -249,7 +334,7 @@ const SHEET_ID = "1Ks9X2Q6fzZuOmXsLBAVLaNH2VT07lpF9FcTdrmAqjqQ";
 
 // Your Scores tab's gid — the number after "gid=" in the URL when
 // that tab is open, e.g. .../edit?gid=THIS_NUMBER#gid=THIS_NUMBER
-const GID = "1939092739";
+const GID = "1641659930";
 
 // Just needs "Anyone with the link can view" turned on
 // (File -> Share -> General access) — no need to Publish to web.
@@ -275,6 +360,8 @@ function tableToTeams(table){
   const nameIdx = idx("Team Name");
   const finalIdx = idx("Final");
   const roundIdx = ROUND_KEYS.map(k => idx(k));
+  const bonusIdx = idx("Bonus (Y/N)");
+  const wagerIdx = idx("Wager");
 
   if(nameIdx === -1){
     throw new Error('Could not find a "Team Name" column. Check that GID points at your Scores tab and its header row says exactly "Team Name".');
@@ -297,6 +384,10 @@ function tableToTeams(table){
       return v === "" ? null : v;
     });
 
+    const bonus = String(cellVal(bonusIdx)).trim().toUpperCase();
+    const wagerRaw = cellVal(wagerIdx);
+    const wager = wagerRaw === "" ? null : wagerRaw;
+
     let final;
     const finalRaw = cellVal(finalIdx);
     if(finalRaw !== ""){
@@ -306,7 +397,7 @@ function tableToTeams(table){
     }
     if(isNaN(final)) final = 0;
 
-    teams.push({ name, rounds, final });
+    teams.push({ name, rounds, final, bonus, wager });
   }
   return teams;
 }
@@ -324,6 +415,10 @@ function render(teams){
   teams.sort((a,b) => b.final - a.final);
   teamCount.textContent = teams.length + (teams.length === 1 ? " team" : " teams");
 
+  // Game is "final" once every team has a Y or N in the Bonus column —
+  // that's when we switch the top 3 rows to gold/silver/bronze.
+  const gameFinal = teams.every(t => t.bonus === "Y" || t.bonus === "N");
+
   board.innerHTML = teams.map((t, i) => {
     const rank = i + 1;
     const prev = previousScores[t.name];
@@ -335,14 +430,28 @@ function render(teams){
       deltaHtml = `<span class="delta show ${cls}">${sign}${diff}</span>`;
     }
 
-    const roundsLabel = t.rounds
+    const roundParts = t.rounds
       .map((v, idx) => v !== null && v !== "" ? `R${idx+1} <span class="rval">${v}</span>` : "")
-      .filter(Boolean)
-      .join("&nbsp;&nbsp;·&nbsp;&nbsp;");
+      .filter(Boolean);
+
+    if(t.wager !== null && t.wager !== ""){
+      roundParts.push(`Wager <span class="rval">${t.wager}</span>`);
+    }
+    if(t.bonus === "Y" || t.bonus === "N"){
+      roundParts.push(`Bonus <span class="rval">${t.bonus}</span>`);
+    }
+    const roundsLabel = roundParts.join("&nbsp;&nbsp;·&nbsp;&nbsp;");
+
+    let rowClass = "";
+    let rankInner = String(rank);
+    if(gameFinal && rank === 1){ rowClass = "medal-gold"; rankInner = `<div class="medal-badge">1</div>`; }
+    else if(gameFinal && rank === 2){ rowClass = "medal-silver"; rankInner = `<div class="medal-badge">2</div>`; }
+    else if(gameFinal && rank === 3){ rowClass = "medal-bronze"; rankInner = `<div class="medal-badge">3</div>`; }
+    else if(rank === 1){ rowClass = "rank-1"; }
 
     return `
-      <div class="row ${rank === 1 ? 'rank-1' : ''}">
-        <div class="rank">${rank}</div>
+      <div class="row ${rowClass}">
+        <div class="rank">${rankInner}</div>
         <div class="teamblock">
           <div class="team">${escapeHtml(t.name)}</div>
           <div class="rounds">${roundsLabel}</div>

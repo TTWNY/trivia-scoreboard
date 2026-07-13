@@ -287,7 +287,7 @@ function parseCSV(text){
 
 function rowsToTeams(rows){
   if(rows.length < 2) return [];
-  const headers = rows[0].map(h => h.trim());
+  const headers = rows[0].map(h => h.replace(/\uFEFF/g, "").trim());
   const idx = name => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
 
   const nameIdx = idx("Team Name");
@@ -400,7 +400,10 @@ async function fetchScores(){
   try{
     const res = await fetch(CSV_URL + (CSV_URL.includes("?") ? "&" : "?") + "cb=" + Date.now());
     if(!res.ok) throw new Error("HTTP " + res.status);
-    const text = await res.text();
+    let text = await res.text();
+    // Google's CSV export often prepends a UTF-8 BOM before the first
+    // header, which silently breaks exact header-name matching.
+    text = text.replace(/^\uFEFF/, "");
     const rows = parseCSV(text);
     const teams = rowsToTeams(rows);
 

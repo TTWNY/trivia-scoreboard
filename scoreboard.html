@@ -243,11 +243,16 @@
    CONFIG — edit these two lines for your game
    ============================================================ */
 
-// Paste your sheet's published CSV link here.
-// Google Sheet -> File -> Share -> Publish to web -> select the
-// "Scores" tab -> format: Comma-separated values (.csv) -> Publish
-// Then paste that URL below.
-const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR6bfjeD-PKKp_jYr_8EezDrdG0VnJ2CXa-AyV8a93jHNTqgLedb7511KKAuMm5FhU9KE-0SQMbChxg/pub?gid=1939092739&single=true&output=csv";
+// Your Google Sheet's ID — the long string in its URL between
+// /d/ and /edit, e.g. docs.google.com/spreadsheets/d/THIS_PART/edit
+const SHEET_ID = "1Ks9X2Q6fzZuOmXsLBAVLaNH2VT07lpF9FcTdrmAqjqQ";
+
+// Your Scores tab's gid — the number after "gid=" in the URL when
+// that tab is open, e.g. .../edit?gid=THIS_NUMBER#gid=THIS_NUMBER
+const GID = "1641659930";
+
+// Just needs "Anyone with the link can view" turned on
+// (File -> Share -> General access) — no need to Publish to web.
 
 // How often to re-fetch scores, in milliseconds.
 const REFRESH_MS = 5000;
@@ -262,32 +267,8 @@ const ROUND_KEYS = ["Round 1","Round 2","Round 3","Round 4","Round 5"];
 let previousScores = {}; // team name -> last known Final score
 let lastGoodTeamCount = 0; // used to ignore transient partial CSV reads
 
-function parseCSV(text){
-  // Minimal CSV parser that handles quoted fields with commas.
-  const rows = [];
-  let row = [], field = "", inQuotes = false;
-  for(let i=0;i<text.length;i++){
-    const c = text[i];
-    if(inQuotes){
-      if(c === '"'){
-        if(text[i+1] === '"'){ field += '"'; i++; }
-        else inQuotes = false;
-      } else field += c;
-    } else {
-      if(c === '"') inQuotes = true;
-      else if(c === ','){ row.push(field); field = ""; }
-      else if(c === '\n'){ row.push(field); rows.push(row); row = []; field = ""; }
-      else if(c === '\r'){ /* skip */ }
-      else field += c;
-    }
-  }
-  if(field.length || row.length){ row.push(field); rows.push(row); }
-  return rows.filter(r => r.some(v => v.trim() !== ""));
-}
-
-function rowsToTeams(rows){
-  if(rows.length < 2) return [];
-  const headers = rows[0].map(h => h.replace(/\uFEFF/g, "").trim());
+function tableToTeams(table){
+  const headers = table.cols.map(c => (c.label || "").trim());
   const idx = name => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
 
   const nameIdx = idx("Team Name");
@@ -295,19 +276,30 @@ function rowsToTeams(rows){
   const roundIdx = ROUND_KEYS.map(k => idx(k));
 
   if(nameIdx === -1){
-    throw new Error('Could not find a "Team Name" column in the sheet.');
+    throw new Error('Could not find a "Team Name" column. Check that GID points at your Scores tab and its header row says exactly "Team Name".');
   }
 
   const teams = [];
-  for(let r = 1; r < rows.length; r++){
-    const row = rows[r];
-    const name = (row[nameIdx] || "").trim();
+  for(const row of table.rows){
+    const cells = row.c || [];
+    const cellVal = (ci) => {
+      if(ci === -1 || !cells[ci]) return "";
+      const cell = cells[ci];
+      return cell.v === null || cell.v === undefined ? "" : cell.v;
+    };
+
+    const name = String(cellVal(nameIdx)).trim();
     if(!name) continue;
 
-    const rounds = roundIdx.map(ci => ci === -1 ? null : (row[ci] || "").trim());
+    const rounds = roundIdx.map(ci => {
+      const v = cellVal(ci);
+      return v === "" ? null : v;
+    });
+
     let final;
-    if(finalIdx !== -1 && row[finalIdx] !== undefined && row[finalIdx].trim() !== ""){
-      final = parseFloat(row[finalIdx]);
+    const finalRaw = cellVal(finalIdx);
+    if(finalRaw !== ""){
+      final = parseFloat(finalRaw);
     } else {
       final = rounds.reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
     }
@@ -385,48 +377,87 @@ function cssEscape(s){
   return s.replace(/["\\]/g, '\\$&');
 }
 
-async function fetchScores(){
+let jsonpCounter = 0;
+
+function fetchScores(){
   const statusText = document.getElementById("statusText");
   const errorBanner = document.getElementById("errorBanner");
   const lastUpdated = document.getElementById("lastUpdated");
 
-  if(CSV_URL.includes("PASTE_YOUR_PUBLISHED_CSV_URL_HERE")){
+  if(SHEET_ID.includes("PASTE_YOUR_SHEET_ID_HERE")){
     errorBanner.style.display = "block";
-    errorBanner.textContent = "Set CSV_URL at the top of the script to your published Google Sheet CSV link.";
+    errorBanner.textContent = "Set SHEET_ID (and GID) at the top of the script to your Google Sheet's ID.";
     statusText.textContent = "Not configured";
     return;
   }
 
-  try{
-    const res = await fetch(CSV_URL + (CSV_URL.includes("?") ? "&" : "?") + "cb=" + Date.now());
-    if(!res.ok) throw new Error("HTTP " + res.status);
-    let text = await res.text();
-    // Google's CSV export often prepends a UTF-8 BOM before the first
-    // header, which silently breaks exact header-name matching.
-    text = text.replace(/^\uFEFF/, "");
-    const rows = parseCSV(text);
-    const teams = rowsToTeams(rows);
+  const callbackName = "__scoreboardCb" + (jsonpCounter++);
+  let settled = false;
 
-    // Google's published CSV occasionally serves a partial/stale snapshot
-    // mid-refresh. If this fetch has noticeably fewer teams than the last
-    // good fetch, treat it as a glitch and keep showing what we have
-    // instead of flashing an incomplete board.
-    if(lastGoodTeamCount > 0 && teams.length > 0 && teams.length < lastGoodTeamCount){
+  const cleanup = (script, timeoutId) => {
+    clearTimeout(timeoutId);
+    delete window[callbackName];
+    if(script && script.parentNode) script.parentNode.removeChild(script);
+  };
+
+  window[callbackName] = function(json){
+    if(settled) return;
+    settled = true;
+    try{
+      if(json.status === "error"){
+        throw new Error(json.errors && json.errors[0] ? json.errors[0].detailed_message : "Sheet returned an error.");
+      }
+      const teams = tableToTeams(json.table);
+
+      // Google occasionally serves a partial/stale snapshot mid-refresh.
+      // If this read has noticeably fewer teams than the last good read,
+      // treat it as a glitch and keep showing what we have.
+      if(lastGoodTeamCount > 0 && teams.length > 0 && teams.length < lastGoodTeamCount){
+        statusText.textContent = "Live";
+        lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString() + " (skipped partial read)";
+        return;
+      }
+
+      render(teams);
+      lastGoodTeamCount = teams.length;
+      errorBanner.style.display = "none";
       statusText.textContent = "Live";
-      lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString() + " (skipped partial read)";
-      return;
+      lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString();
+    } catch(err){
+      errorBanner.style.display = "block";
+      errorBanner.textContent = "Couldn't load scores: " + err.message;
+      statusText.textContent = "Reconnecting…";
     }
+  };
 
-    render(teams);
-    lastGoodTeamCount = teams.length;
-    errorBanner.style.display = "none";
-    statusText.textContent = "Live";
-    lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString();
-  } catch(err){
+  const script = document.createElement("script");
+  const url = "https://docs.google.com/spreadsheets/d/" + SHEET_ID +
+    "/gviz/tq?gid=" + encodeURIComponent(GID) +
+    "&headers=1&tqx=out:json;responseHandler:" + callbackName +
+    "&cb=" + Date.now();
+  script.src = url;
+
+  const timeoutId = setTimeout(() => {
+    if(settled) return;
+    settled = true;
     errorBanner.style.display = "block";
-    errorBanner.textContent = "Couldn't load scores: " + err.message;
+    errorBanner.textContent = "Couldn't reach the sheet — check SHEET_ID/GID and that sharing is set to 'Anyone with the link can view'.";
     statusText.textContent = "Reconnecting…";
-  }
+    cleanup(script, timeoutId);
+  }, 8000);
+
+  script.onerror = () => {
+    if(settled) return;
+    settled = true;
+    errorBanner.style.display = "block";
+    errorBanner.textContent = "Couldn't reach the sheet — check SHEET_ID/GID and that sharing is set to 'Anyone with the link can view'.";
+    statusText.textContent = "Reconnecting…";
+    cleanup(script, timeoutId);
+  };
+
+  script.onload = () => cleanup(script, timeoutId);
+
+  document.body.appendChild(script);
 }
 
 fetchScores();

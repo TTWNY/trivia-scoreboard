@@ -106,9 +106,15 @@
     overflow-x:hidden;
     justify-content:flex-start;
     --scale:1;
-    scrollbar-width:none;
+    scrollbar-width:thin;
+    scrollbar-color: var(--teal-dim) transparent;
   }
-  .board::-webkit-scrollbar{ display:none; }
+  .board::-webkit-scrollbar{ width:8px; }
+  .board::-webkit-scrollbar-track{ background:transparent; }
+  .board::-webkit-scrollbar-thumb{
+    background:var(--teal-dim);
+    border-radius:4px;
+  }
 
   .row{
     display:grid;
@@ -486,57 +492,6 @@ function render(teams){
     }
     previousScores[t.name] = t.final;
   });
-
-  setupAutoScroll(board);
-}
-
-let autoScrollHandle = null;
-
-function setupAutoScroll(board){
-  // Restart the loop fresh each render (row heights may have changed)
-  if(autoScrollHandle) cancelAnimationFrame(autoScrollHandle);
-
-  const overflow = board.scrollHeight - board.clientHeight;
-  if(overflow <= 4){
-    board.scrollTop = 0;
-    return;
-  }
-
-  const PIXELS_PER_SECOND = 28;
-  const PAUSE_MS = 2200;
-  let direction = 1; // 1 = scrolling down, -1 = scrolling up
-  let pauseUntil = performance.now() + PAUSE_MS;
-  let lastTs = null;
-  let pos = board.scrollTop; // true float position; scrollTop itself only stores whole pixels
-
-  function step(ts){
-    if(lastTs === null) lastTs = ts;
-    const dt = ts - lastTs;
-    lastTs = ts;
-
-    if(ts < pauseUntil){
-      autoScrollHandle = requestAnimationFrame(step);
-      return;
-    }
-
-    const maxScroll = board.scrollHeight - board.clientHeight;
-    pos += direction * PIXELS_PER_SECOND * (dt / 1000);
-
-    if(direction === 1 && pos >= maxScroll){
-      pos = maxScroll;
-      direction = -1;
-      pauseUntil = ts + PAUSE_MS;
-    } else if(direction === -1 && pos <= 0){
-      pos = 0;
-      direction = 1;
-      pauseUntil = ts + PAUSE_MS;
-    }
-
-    board.scrollTop = pos;
-    autoScrollHandle = requestAnimationFrame(step);
-  }
-
-  autoScrollHandle = requestAnimationFrame(step);
 }
 
 function escapeHtml(s){

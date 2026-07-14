@@ -102,10 +102,13 @@
     display:flex;
     flex-direction:column;
     gap:calc(1.1vh * var(--scale, 1));
-    overflow:hidden;
-    justify-content:center;
+    overflow-y:auto;
+    overflow-x:hidden;
+    justify-content:flex-start;
     --scale:1;
+    scrollbar-width:none;
   }
+  .board::-webkit-scrollbar{ display:none; }
 
   .row{
     display:grid;
@@ -118,8 +121,7 @@
     padding:calc(1.1vh * var(--scale, 1)) 2vw;
     position:relative;
     overflow:hidden;
-    flex:1 1 0;
-    min-height:0;
+    flex-shrink:0;
     transition: transform 500ms ease, box-shadow 500ms ease, border-color 500ms ease;
   }
   .row.rank-1{
@@ -420,7 +422,7 @@ function render(teams){
 
   // Shrink rows gracefully once there are more than ~7 teams, so nothing
   // gets clipped no matter how many teams are on the board.
-  const scale = Math.max(0.55, Math.min(1, 7 / Math.max(teams.length, 1)));
+  const scale = Math.max(0.8, Math.min(1, 8 / Math.max(teams.length, 1)));
   board.style.setProperty('--scale', scale);
 
   // Game is "final" once every team has a Y or N in the Bonus column —
@@ -484,6 +486,57 @@ function render(teams){
     }
     previousScores[t.name] = t.final;
   });
+
+  setupAutoScroll(board);
+}
+
+let autoScrollHandle = null;
+
+function setupAutoScroll(board){
+  // Restart the loop fresh each render (row heights may have changed)
+  if(autoScrollHandle) cancelAnimationFrame(autoScrollHandle);
+
+  const overflow = board.scrollHeight - board.clientHeight;
+  if(overflow <= 4){
+    board.scrollTop = 0;
+    return;
+  }
+
+  const PIXELS_PER_SECOND = 28;
+  const PAUSE_MS = 2200;
+  let direction = 1; // 1 = scrolling down, -1 = scrolling up
+  let pauseUntil = performance.now() + PAUSE_MS;
+  let lastTs = null;
+  let pos = board.scrollTop; // true float position; scrollTop itself only stores whole pixels
+
+  function step(ts){
+    if(lastTs === null) lastTs = ts;
+    const dt = ts - lastTs;
+    lastTs = ts;
+
+    if(ts < pauseUntil){
+      autoScrollHandle = requestAnimationFrame(step);
+      return;
+    }
+
+    const maxScroll = board.scrollHeight - board.clientHeight;
+    pos += direction * PIXELS_PER_SECOND * (dt / 1000);
+
+    if(direction === 1 && pos >= maxScroll){
+      pos = maxScroll;
+      direction = -1;
+      pauseUntil = ts + PAUSE_MS;
+    } else if(direction === -1 && pos <= 0){
+      pos = 0;
+      direction = 1;
+      pauseUntil = ts + PAUSE_MS;
+    }
+
+    board.scrollTop = pos;
+    autoScrollHandle = requestAnimationFrame(step);
+  }
+
+  autoScrollHandle = requestAnimationFrame(step);
 }
 
 function escapeHtml(s){

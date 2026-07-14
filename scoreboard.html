@@ -101,22 +101,25 @@
     flex:1;
     display:flex;
     flex-direction:column;
-    gap:1.1vh;
+    gap:calc(1.1vh * var(--scale, 1));
     overflow:hidden;
     justify-content:center;
+    --scale:1;
   }
 
   .row{
     display:grid;
-    grid-template-columns: 5.5vh 1fr auto;
+    grid-template-columns: calc(5.5vh * var(--scale, 1)) 1fr auto;
     align-items:center;
     gap:2vw;
     background:linear-gradient(180deg, var(--panel-2), var(--panel));
     border:1px solid var(--line);
     border-radius:14px;
-    padding:1.1vh 2vw;
+    padding:calc(1.1vh * var(--scale, 1)) 2vw;
     position:relative;
     overflow:hidden;
+    flex:1 1 0;
+    min-height:0;
     transition: transform 500ms ease, box-shadow 500ms ease, border-color 500ms ease;
   }
   .row.rank-1{
@@ -177,15 +180,15 @@
   .rank{
     font-family:'Playfair Display', serif;
     font-weight:900;
-    font-size:clamp(20px, 3vh, 34px);
+    font-size:calc(clamp(20px, 3vh, 34px) * var(--scale, 1));
     color:var(--text-dim);
     text-align:center;
   }
   .rank-1 .rank{ color:var(--teal); }
 
   .medal-badge{
-    width:clamp(30px, 4.6vh, 52px);
-    height:clamp(30px, 4.6vh, 52px);
+    width:calc(clamp(30px, 4.6vh, 52px) * var(--scale, 1));
+    height:calc(clamp(30px, 4.6vh, 52px) * var(--scale, 1));
     border-radius:50%;
     margin:0 auto;
     display:flex;
@@ -193,7 +196,7 @@
     justify-content:center;
     font-family:'Playfair Display', serif;
     font-weight:900;
-    font-size:clamp(14px, 2.1vh, 24px);
+    font-size:calc(clamp(14px, 2.1vh, 24px) * var(--scale, 1));
     color:#241505;
     position:relative;
   }
@@ -219,7 +222,7 @@
     min-width:0;
   }
   .team{
-    font-size:clamp(18px, 3.1vh, 40px);
+    font-size:calc(clamp(18px, 3.1vh, 40px) * var(--scale, 1));
     font-weight:700;
     white-space:nowrap;
     overflow:hidden;
@@ -227,7 +230,7 @@
     letter-spacing:0.3px;
   }
   .rounds{
-    font-size:clamp(10px, 1.3vh, 15px);
+    font-size:calc(clamp(10px, 1.3vh, 15px) * var(--scale, 1));
     color:var(--text-dim);
     letter-spacing:1px;
     text-transform:uppercase;
@@ -256,7 +259,7 @@
   .score{
     font-family:'Playfair Display', serif;
     font-weight:900;
-    font-size:clamp(28px, 5.2vh, 58px);
+    font-size:calc(clamp(28px, 5.2vh, 58px) * var(--scale, 1));
     color:var(--teal);
     min-width:2ch;
     text-align:right;
@@ -414,6 +417,11 @@ function render(teams){
 
   teams.sort((a,b) => b.final - a.final);
   teamCount.textContent = teams.length + (teams.length === 1 ? " team" : " teams");
+
+  // Shrink rows gracefully once there are more than ~7 teams, so nothing
+  // gets clipped no matter how many teams are on the board.
+  const scale = Math.max(0.55, Math.min(1, 7 / Math.max(teams.length, 1)));
+  board.style.setProperty('--scale', scale);
 
   // Game is "final" once every team has a Y or N in the Bonus column —
   // that's when we switch the top 3 rows to gold/silver/bronze.

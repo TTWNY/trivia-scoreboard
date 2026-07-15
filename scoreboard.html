@@ -92,6 +92,10 @@
     box-shadow:0 0 10px var(--teal);
     animation:pulse 1.6s ease-in-out infinite;
   }
+  .dot.ready-hint{
+    background:var(--coral);
+    box-shadow:0 0 10px var(--coral);
+  }
   @keyframes pulse{
     0%,100%{opacity:1; transform:scale(1);}
     50%{opacity:.4; transform:scale(0.7);}
@@ -311,6 +315,34 @@
     margin-bottom:1.2vh;
     display:none;
   }
+
+  .tie-banner{
+    background:rgba(227,178,60,0.14);
+    border:1px solid rgba(227,178,60,0.45);
+    color:var(--gold-2);
+    padding:10px 16px;
+    border-radius:10px;
+    font-size:clamp(13px, 1.6vh, 18px);
+    font-weight:700;
+    line-height:1.6;
+    margin-bottom:1.2vh;
+    display:none;
+  }
+
+  .tie-tag{
+    display:inline-block;
+    margin-left:10px;
+    padding:2px 10px;
+    border-radius:20px;
+    background:rgba(227,178,60,0.18);
+    border:1px solid rgba(227,178,60,0.5);
+    color:var(--gold-2);
+    font-family:'Inter', sans-serif;
+    font-size:0.34em;
+    font-weight:800;
+    letter-spacing:1.5px;
+    vertical-align:middle;
+  }
 </style>
 </head>
 <body>
@@ -323,6 +355,7 @@
   </div>
 
   <div class="error-banner" id="errorBanner"></div>
+  <div class="tie-banner" id="tieBanner"></div>
 
   <div class="board" id="board">
     <div class="empty">Waiting for scores…</div>
@@ -345,10 +378,20 @@ const SHEET_ID = "1Ks9X2Q6fzZuOmXsLBAVLaNH2VT07lpF9FcTdrmAqjqQ";
 
 // Your Scores tab's gid — the number after "gid=" in the URL when
 // that tab is open, e.g. .../edit?gid=THIS_NUMBER#gid=THIS_NUMBER
-const GID = "1939092739";
+const GID = "1641659930";
 
 // Just needs "Anyone with the link can view" turned on
 // (File -> Share -> General access) — no need to Publish to web.
+
+// A cell on your Scores tab that YOU control to reveal the final
+// results. Pick any empty cell (e.g. L1), type it in as a label for
+// yourself so you remember what it's for, and put the actual value
+// in the cell right after it — that's the one referenced below.
+// Type YES in that cell when you're ready to reveal the podium;
+// leave it blank (or NO) to keep results hidden. Only someone with
+// edit access to the Sheet can change this — players on the display
+// page can't touch it.
+const REVEAL_CELL = "K2";
 
 // How often to re-fetch scores, in milliseconds.
 const REFRESH_MS = 5000;
@@ -360,8 +403,10 @@ const REFRESH_MS = 5000;
    ============================================================ */
 
 const ROUND_KEYS = ["Round 1","Round 2","Round 3","Round 4","Round 5"];
-let previousScores = {}; // team name -> last known Final score
+let previousScores = {}; // team name -> last known displayed score
 let lastGoodTeamCount = 0; // used to ignore transient partial reads
+let revealed = false; // host controls when true final scores + medals show
+let lastTeams = []; // cached so toggling reveal re-renders without a fetch
 let consecutiveLowReads = 0;
 
 function tableToTeams(table){
@@ -414,6 +459,7 @@ function tableToTeams(table){
 }
 
 function render(teams){
+  lastTeams = teams;
   const board = document.getElementById("board");
   const teamCount = document.getElementById("teamCount");
 
@@ -423,24 +469,72 @@ function render(teams){
     return;
   }
 
-  teams.sort((a,b) => b.final - a.final);
+  // Game is "final" once every team has a Y or N in the Bonus column —
+  // that's when results are ready, but they only actually SHOW once the
+  // host triggers the reveal (triple-tap the logo).
+  const gameFinal = teams.every(t => t.bonus === "Y" || t.bonus === "N");
+  const showFinal = revealed && gameFinal;
+
+  // Pre-reveal, rank by round scores only (no wager/bonus applied yet)
+  // so the true final standings stay a surprise.
+  const withScore = teams.map(t => {
+    const preBonus = t.rounds.reduce((sum, v) => sum + (parseFloat(v) || 0), 0);
+    return { ...t, displayScore: showFinal ? t.final : preBonus };
+  });
+
+  withScore.sort((a,b) => b.displayScore - a.displayScore);
   teamCount.textContent = teams.length + (teams.length === 1 ? " team" : " teams");
+
+  // Standard competition ranking: tied teams share a rank number, and
+  // the next distinct score skips ahead accordingly (e.g. two teams
+  // tied for 1st means the next team is 3rd, not 2nd).
+  let runningRank = 0;
+  withScore.forEach((t, i) => {
+    if(i === 0 || t.displayScore !== withScore[i-1].displayScore){
+      runningRank = i + 1;
+    }
+    t.rank = runningRank;
+  });
+
+  const rankCounts = {};
+  withScore.forEach(t => { rankCounts[t.rank] = (rankCounts[t.rank] || 0) + 1; });
+
+  // Podium ties need a tiebreaker — flag it clearly when final scores are showing.
+  const tieBanner = document.getElementById("tieBanner");
+  if(tieBanner){
+    if(showFinal){
+      const messages = [1,2,3]
+        .filter(r => rankCounts[r] > 1)
+        .map(r => {
+          const place = r === 1 ? "1st" : r === 2 ? "2nd" : "3rd";
+          const names = withScore.filter(t => t.rank === r).map(t => t.name).join(" & ");
+          return `Tie for ${place}: ${escapeHtml(names)} — tiebreaker needed`;
+        });
+      if(messages.length){
+        tieBanner.innerHTML = messages.map(m => `⚠ ${m}`).join("<br>");
+        tieBanner.style.display = "block";
+      } else {
+        tieBanner.style.display = "none";
+      }
+    } else {
+      tieBanner.style.display = "none";
+    }
+  }
+
+  updateStatusHint(gameFinal);
 
   // Shrink rows gracefully once there are more than ~7 teams, so nothing
   // gets clipped no matter how many teams are on the board.
   const scale = Math.max(0.8, Math.min(1, 8 / Math.max(teams.length, 1)));
   board.style.setProperty('--scale', scale);
 
-  // Game is "final" once every team has a Y or N in the Bonus column —
-  // that's when we switch the top 3 rows to gold/silver/bronze.
-  const gameFinal = teams.every(t => t.bonus === "Y" || t.bonus === "N");
-
-  board.innerHTML = teams.map((t, i) => {
-    const rank = i + 1;
+  board.innerHTML = withScore.map((t, i) => {
+    const rank = t.rank;
+    const isTie = rankCounts[rank] > 1;
     const prev = previousScores[t.name];
     let deltaHtml = "";
-    if(prev !== undefined && prev !== t.final){
-      const diff = t.final - prev;
+    if(prev !== undefined && prev !== t.displayScore){
+      const diff = t.displayScore - prev;
       const cls = diff > 0 ? "up" : "down";
       const sign = diff > 0 ? "+" : "";
       deltaHtml = `<span class="delta show ${cls}">${sign}${diff}</span>`;
@@ -450,47 +544,51 @@ function render(teams){
       .map((v, idx) => v !== null && v !== "" ? `R${idx+1} <span class="rval">${v}</span>` : "")
       .filter(Boolean);
 
-    if(t.wager !== null && t.wager !== ""){
-      roundParts.push(`Wager <span class="rval">${t.wager}</span>`);
-    }
-    if(t.bonus === "Y" || t.bonus === "N"){
-      roundParts.push(`Bonus <span class="rval">${t.bonus}</span>`);
+    if(showFinal){
+      if(t.wager !== null && t.wager !== ""){
+        roundParts.push(`Wager <span class="rval">${t.wager}</span>`);
+      }
+      if(t.bonus === "Y" || t.bonus === "N"){
+        roundParts.push(`Bonus <span class="rval">${t.bonus}</span>`);
+      }
     }
     const roundsLabel = roundParts.join("&nbsp;&nbsp;·&nbsp;&nbsp;");
 
+    const tieTag = (showFinal && isTie && rank <= 3) ? `<span class="tie-tag">TIE</span>` : "";
+
     let rowClass = "";
     let rankInner = String(rank);
-    if(gameFinal && rank === 1){ rowClass = "medal-gold"; rankInner = `<div class="medal-badge">1</div>`; }
-    else if(gameFinal && rank === 2){ rowClass = "medal-silver"; rankInner = `<div class="medal-badge">2</div>`; }
-    else if(gameFinal && rank === 3){ rowClass = "medal-bronze"; rankInner = `<div class="medal-badge">3</div>`; }
+    if(showFinal && rank === 1){ rowClass = "medal-gold"; rankInner = `<div class="medal-badge">1</div>`; }
+    else if(showFinal && rank === 2){ rowClass = "medal-silver"; rankInner = `<div class="medal-badge">2</div>`; }
+    else if(showFinal && rank === 3){ rowClass = "medal-bronze"; rankInner = `<div class="medal-badge">3</div>`; }
     else if(rank === 1){ rowClass = "rank-1"; }
 
     return `
       <div class="row ${rowClass}">
         <div class="rank">${rankInner}</div>
         <div class="teamblock">
-          <div class="team">${escapeHtml(t.name)}</div>
+          <div class="team">${escapeHtml(t.name)}${tieTag}</div>
           <div class="rounds">${roundsLabel}</div>
         </div>
         <div class="scoreblock">
           ${deltaHtml}
-          <div class="score" data-team="${escapeHtml(t.name)}">${t.final}</div>
+          <div class="score" data-team="${escapeHtml(t.name)}">${t.displayScore}</div>
         </div>
       </div>
     `;
   }).join("");
 
   // bump animation for changed scores
-  teams.forEach(t => {
+  withScore.forEach(t => {
     const prev = previousScores[t.name];
-    if(prev !== undefined && prev !== t.final){
+    if(prev !== undefined && prev !== t.displayScore){
       const el = board.querySelector(`.score[data-team="${cssEscape(t.name)}"]`);
       if(el){
         el.classList.add("bump");
         setTimeout(() => el.classList.remove("bump"), 700);
       }
     }
-    previousScores[t.name] = t.final;
+    previousScores[t.name] = t.displayScore;
   });
 }
 
@@ -505,18 +603,7 @@ function cssEscape(s){
 
 let jsonpCounter = 0;
 
-function fetchScores(){
-  const statusText = document.getElementById("statusText");
-  const errorBanner = document.getElementById("errorBanner");
-  const lastUpdated = document.getElementById("lastUpdated");
-
-  if(SHEET_ID.includes("PASTE_YOUR_SHEET_ID_HERE")){
-    errorBanner.style.display = "block";
-    errorBanner.textContent = "Set SHEET_ID (and GID) at the top of the script to your Google Sheet's ID.";
-    statusText.textContent = "Not configured";
-    return;
-  }
-
+function gvizJsonp(rangeParam, onData, onFail){
   const callbackName = "__scoreboardCb" + (jsonpCounter++);
   let settled = false;
 
@@ -529,63 +616,118 @@ function fetchScores(){
   window[callbackName] = function(json){
     if(settled) return;
     settled = true;
-    try{
-      if(json.status === "error"){
-        throw new Error(json.errors && json.errors[0] ? json.errors[0].detailed_message : "Sheet returned an error.");
-      }
-      const teams = tableToTeams(json.table);
-
-      // Google occasionally serves a partial/stale snapshot mid-refresh.
-      // If this read has noticeably fewer teams than the last good read,
-      // treat it as a glitch and keep showing what we have.
-      if(lastGoodTeamCount > 0 && teams.length < lastGoodTeamCount && consecutiveLowReads < 2){
-        consecutiveLowReads++;
-        statusText.textContent = "Live";
-        lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString() + " (skipped partial read)";
-        return;
-      }
-      consecutiveLowReads = 0;
-
-      render(teams);
-      lastGoodTeamCount = teams.length;
-      errorBanner.style.display = "none";
-      statusText.textContent = "Live";
-      lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString();
-    } catch(err){
-      errorBanner.style.display = "block";
-      errorBanner.textContent = "Couldn't load scores: " + err.message;
-      statusText.textContent = "Reconnecting…";
-    }
+    onData(json);
   };
 
   const script = document.createElement("script");
   const url = "https://docs.google.com/spreadsheets/d/" + SHEET_ID +
     "/gviz/tq?gid=" + encodeURIComponent(GID) +
-    "&headers=1&tqx=out:json;responseHandler:" + callbackName +
+    rangeParam +
+    "&tqx=out:json;responseHandler:" + callbackName +
     "&cb=" + Date.now();
   script.src = url;
 
   const timeoutId = setTimeout(() => {
     if(settled) return;
     settled = true;
-    errorBanner.style.display = "block";
-    errorBanner.textContent = "Couldn't reach the sheet — check SHEET_ID/GID and that sharing is set to 'Anyone with the link can view'.";
-    statusText.textContent = "Reconnecting…";
     cleanup(script, timeoutId);
+    onFail("timeout");
   }, 8000);
 
   script.onerror = () => {
     if(settled) return;
     settled = true;
-    errorBanner.style.display = "block";
-    errorBanner.textContent = "Couldn't reach the sheet — check SHEET_ID/GID and that sharing is set to 'Anyone with the link can view'.";
-    statusText.textContent = "Reconnecting…";
     cleanup(script, timeoutId);
+    onFail("network");
   };
 
   script.onload = () => cleanup(script, timeoutId);
 
   document.body.appendChild(script);
+}
+
+function fetchRevealFlag(done){
+  gvizJsonp(
+    "&range=" + encodeURIComponent(REVEAL_CELL),
+    (json) => {
+      try{
+        const row = json.table && json.table.rows && json.table.rows[0];
+        const cell = row && row.c && row.c[0];
+        const raw = (cell && cell.v !== null && cell.v !== undefined) ? String(cell.v).trim().toUpperCase() : "";
+        revealed = (raw === "YES" || raw === "Y" || raw === "TRUE" || raw === "1");
+      } catch(e){
+        // Leave `revealed` at its last known value if this read fails.
+      }
+      done();
+    },
+    () => done() // if the reveal-cell fetch fails, just keep the last known value
+  );
+}
+
+function fetchMainData(){
+  const statusText = document.getElementById("statusText");
+  const errorBanner = document.getElementById("errorBanner");
+  const lastUpdated = document.getElementById("lastUpdated");
+
+  gvizJsonp(
+    "&headers=1",
+    (json) => {
+      try{
+        if(json.status === "error"){
+          throw new Error(json.errors && json.errors[0] ? json.errors[0].detailed_message : "Sheet returned an error.");
+        }
+        const teams = tableToTeams(json.table);
+
+        // Google occasionally serves a partial/stale snapshot mid-refresh.
+        // If this read has noticeably fewer teams than the last good read,
+        // treat it as a glitch and keep showing what we have.
+        if(lastGoodTeamCount > 0 && teams.length < lastGoodTeamCount && consecutiveLowReads < 2){
+          consecutiveLowReads++;
+          statusText.textContent = "Live";
+          lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString() + " (skipped partial read)";
+          return;
+        }
+        consecutiveLowReads = 0;
+
+        render(teams);
+        lastGoodTeamCount = teams.length;
+        errorBanner.style.display = "none";
+        statusText.textContent = "Live";
+        lastUpdated.textContent = "Updated " + new Date().toLocaleTimeString();
+      } catch(err){
+        errorBanner.style.display = "block";
+        errorBanner.textContent = "Couldn't load scores: " + err.message;
+        statusText.textContent = "Reconnecting…";
+      }
+    },
+    () => {
+      errorBanner.style.display = "block";
+      errorBanner.textContent = "Couldn't reach the sheet — check SHEET_ID/GID and that sharing is set to 'Anyone with the link can view'.";
+      statusText.textContent = "Reconnecting…";
+    }
+  );
+}
+
+function fetchScores(){
+  if(SHEET_ID.includes("PASTE_YOUR_SHEET_ID_HERE")){
+    const statusText = document.getElementById("statusText");
+    const errorBanner = document.getElementById("errorBanner");
+    errorBanner.style.display = "block";
+    errorBanner.textContent = "Set SHEET_ID (and GID) at the top of the script to your Google Sheet's ID.";
+    statusText.textContent = "Not configured";
+    return;
+  }
+  fetchRevealFlag(() => fetchMainData());
+}
+
+function updateStatusHint(gameFinal){
+  const dot = document.querySelector('.dot');
+  if(!dot) return;
+  if(gameFinal && !revealed){
+    dot.classList.add('ready-hint');
+  } else {
+    dot.classList.remove('ready-hint');
+  }
 }
 
 fetchScores();
